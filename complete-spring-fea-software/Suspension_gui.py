@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QGroupBox, QLabel, QDoubleSpinBox, QPushButton,
                              QComboBox, QTabWidget, QTextEdit, QSplitter,
-                             QApplication, QMessageBox)
+                             QApplication, QMessageBox, QSizePolicy, QScrollArea)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from Suspension_solver import SuspensionSolver
@@ -46,7 +46,9 @@ class SuspensionAnalysisWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("汽车悬架系统动力学分析")
-        self.setGeometry(100, 100, 1400, 900)
+        # 初始窗口大小（允许用户自由调整）
+        self.resize(1400, 900)
+        self.setMinimumSize(800, 600)
 
         self.results = None
         self.solver = None
@@ -133,6 +135,51 @@ class SuspensionAnalysisWindow(QMainWindow):
 
         stiffness_group.setLayout(stiffness_layout)
         layout.addWidget(stiffness_group)
+
+        # 2.5 车辆几何与负载参数（新增）
+        vehicle_group = QGroupBox("车辆几何与负载参数")
+        vehicle_layout = QVBoxLayout()
+
+        def add_spin(label, default=0.0, minimum=-1e6, maximum=1e6, decimals=3):
+            hl = QHBoxLayout()
+            hl.addWidget(QLabel(label))
+            spin = QDoubleSpinBox()
+            spin.setRange(minimum, maximum)
+            spin.setValue(default)
+            spin.setDecimals(decimals)
+            hl.addWidget(spin)
+            vehicle_layout.addLayout(hl)
+            return spin
+
+        # 添加用户列出的参数
+        self.empty_axle_load = add_spin("空载轴重量 (kg):", default=800.0, decimals=1)
+        self.full_axle_load = add_spin("满载轴重量 (kg):", default=1200.0, decimals=1)
+        self.unsprung_mass = add_spin("悬下重量（非弹簧承载）(kg):", default=40.0, decimals=1)
+        # 新增：整车质量与几何
+        self.vehicle_mass = add_spin("整车质量（kg）:", default=1500.0, decimals=1)
+        self.wheelbase = add_spin("轴距 (m):", default=2.6, decimals=3)
+        self.track_width = add_spin("轮距 (m):", default=1.6, decimals=3)
+        self.damper_to_arm_a = add_spin("减震器安装点到摇臂支点的距离 a (m):", default=0.25, decimals=3)
+        self.arm_full_length_b = add_spin("安装减震器摇臂全长 b (m):", default=0.35, decimals=3)
+        self.vert_dist_c = add_spin("上下摇臂与羊角连接点间垂直距离 c (m):", default=0.12, decimals=3)
+        self.lower_to_ground_d = add_spin("下摇臂到地面距离 d (m):", default=0.45, decimals=3)
+        self.lever_Ro = add_spin("转动力臂 Ro (m):", default=0.08, decimals=3)
+        self.kingpin_inclination = add_spin("主销内倾角 δo (deg):", default=5.0, decimals=3)
+        self.damper_tilt = add_spin("减震器中心线对铅垂线的角度 ζ (deg):", default=2.0, decimals=3)
+        self.upper_arm_alpha = add_spin("上臂倾斜角 α (deg):", default=10.0, decimals=3)
+        self.lower_arm_beta = add_spin("下臂倾斜角 β (deg):", default=8.0, decimals=3)
+        self.empty_wheel_z = add_spin("空载轮心坐标 (Z向) (m):", default=-0.02, decimals=4)
+        self.full_wheel_z = add_spin("满载轮心坐标 (Z向) (m):", default=0.02, decimals=4)
+        self.damper_free_length = add_spin("减震器自由长度 (m):", default=0.35, decimals=4)
+        self.upper_hole_dia = add_spin("上安装孔直径 (m):", default=0.02, decimals=4)
+        self.upper_mount_width = add_spin("上安装宽度 (m):", default=0.05, decimals=4)
+        self.lower_hole_dia = add_spin("下安装孔直径 (m):", default=0.02, decimals=4)
+        self.lower_mount_width = add_spin("下安装宽度 (m):", default=0.05, decimals=4)
+        self.damper_max_travel = add_spin("减震器最大行程 (m):", default=0.12, decimals=4)
+        self.static_sag = add_spin("装车后空载自重下沉量 (m):", default=0.02, decimals=4)
+
+        vehicle_group.setLayout(vehicle_layout)
+        layout.addWidget(vehicle_group)
 
         # 3. 阻尼参数组
         damping_group = QGroupBox("阻尼参数（比例阻尼）")
@@ -249,6 +296,13 @@ class SuspensionAnalysisWindow(QMainWindow):
 
         layout.addStretch()
 
+        # 包装为可滚动区域，避免长表单被截断
+        scroll = QScrollArea()
+        scroll.setWidget(panel)
+        scroll.setWidgetResizable(True)
+        scroll.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+
+        return scroll
         return panel
 
     def _create_results_panel(self):
@@ -264,6 +318,9 @@ class SuspensionAnalysisWindow(QMainWindow):
         time_layout = QVBoxLayout(time_response_tab)
         self.time_figure = Figure(figsize=(10, 8))
         self.time_canvas = FigureCanvas(self.time_figure)
+        # 允许画布随窗口拉伸
+        self.time_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.time_canvas.updateGeometry()
         time_layout.addWidget(self.time_canvas)
         self.tabs.addTab(time_response_tab, "时域响应")
 
@@ -272,17 +329,25 @@ class SuspensionAnalysisWindow(QMainWindow):
         freq_layout = QVBoxLayout(freq_response_tab)
         self.freq_figure = Figure(figsize=(10, 8))
         self.freq_canvas = FigureCanvas(self.freq_figure)
+        self.freq_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.freq_canvas.updateGeometry()
         freq_layout.addWidget(self.freq_canvas)
         self.tabs.addTab(freq_response_tab, "频域响应")
-
         # 3. 性能指标选项卡
         metrics_tab = QWidget()
         metrics_layout = QVBoxLayout(metrics_tab)
         self.metrics_text = QTextEdit()
         self.metrics_text.setReadOnly(True)
+        # 使用等宽字体，启用按窗口宽度换行并允许伸展与滚动
         self.metrics_text.setStyleSheet("font-family: Consolas; font-size: 12px;")
+        self.metrics_text.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.metrics_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.metrics_text.setMinimumHeight(200)
         metrics_layout.addWidget(self.metrics_text)
         self.tabs.addTab(metrics_tab, "性能指标")
+
+        # 使选项卡区域可伸展，避免内容被截断
+        self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         layout.addWidget(self.tabs)
 
@@ -478,13 +543,43 @@ class SuspensionAnalysisWindow(QMainWindow):
             road_excitation = self._create_road_excitation()
 
             # 创建求解器
-            self.solver = SuspensionSolver(m1, m2, k1, k2, c, road_excitation)
+            # 收集车辆参数并创建求解器（传递 vehicle_params）
+            vehicle_params = {
+                'empty_axle_load': self.empty_axle_load.value(),
+                'full_axle_load': self.full_axle_load.value(),
+                'unsprung_mass': self.unsprung_mass.value(),
+                'damper_to_arm_a': self.damper_to_arm_a.value(),
+                'arm_full_length_b': self.arm_full_length_b.value(),
+                'vert_dist_c': self.vert_dist_c.value(),
+                'lower_to_ground_d': self.lower_to_ground_d.value(),
+                'lever_Ro': self.lever_Ro.value(),
+                'kingpin_inclination': self.kingpin_inclination.value(),
+                'damper_tilt': self.damper_tilt.value(),
+                'upper_arm_alpha': self.upper_arm_alpha.value(),
+                'lower_arm_beta': self.lower_arm_beta.value(),
+                'empty_wheel_z': self.empty_wheel_z.value(),
+                'full_wheel_z': self.full_wheel_z.value(),
+                'damper_free_length': self.damper_free_length.value(),
+                'upper_hole_dia': self.upper_hole_dia.value(),
+                'upper_mount_width': self.upper_mount_width.value(),
+                'lower_hole_dia': self.lower_hole_dia.value(),
+                'lower_mount_width': self.lower_mount_width.value(),
+                'damper_max_travel': self.damper_max_travel.value(),
+                'static_sag': self.static_sag.value(),
+                # 新增整车质量与几何
+                'vehicle_mass': self.vehicle_mass.value(),
+                'wheelbase': self.wheelbase.value(),
+                'track_width': self.track_width.value()
+            }
+
+            self.solver = SuspensionSolver(m1, m2, k1, k2, c, road_excitation, vehicle_params=vehicle_params)
 
             # 仿真参数
             time_span = (0, self.duration_spin.value())
             n_points = int(self.points_spin.value())
 
             # 创建后台线程
+            # 请求整车仿真（通过在 solver.solve_dynamic 中平均四个角的响应）
             self.analysis_thread = AnalysisThread(self.solver, time_span, n_points)
             self.analysis_thread.finished.connect(self._on_analysis_finished)
             self.analysis_thread.error.connect(self._on_analysis_error)
@@ -522,10 +617,18 @@ class SuspensionAnalysisWindow(QMainWindow):
         self.time_figure.clear()
 
         t = self.results['time']
-        x0 = self.results['x0']
-        x1 = self.results['x1']
-        x2 = self.results['x2']
-        a2 = self.results['a2']
+        # 兼容 multi-body 和 2-DOF 输出
+        if 'body_zs' in self.results:
+            x0 = self.results.get('x0', np.zeros_like(t))
+            # body_zs is shape (n_points,)
+            x1 = np.zeros_like(t)  # placeholder for tire (not used in body plot)
+            x2 = self.results['body_zs']
+            a2 = self.results.get('body_zs_a', np.gradient(self.results['body_zs_v'], t))
+        else:
+            x0 = self.results['x0']
+            x1 = self.results['x1']
+            x2 = self.results['x2']
+            a2 = self.results['a2']
 
         # 创建4个子图
         ax1 = self.time_figure.add_subplot(4, 1, 1)
@@ -536,15 +639,30 @@ class SuspensionAnalysisWindow(QMainWindow):
         ax1.set_title('悬架系统时域响应', fontsize=14, fontweight='bold')
 
         ax2 = self.time_figure.add_subplot(4, 1, 2)
-        ax2.plot(t, x1 * 1000, 'b-', linewidth=1.5, label='轮胎位移 x₁')
-        ax2.plot(t, x2 * 1000, 'r-', linewidth=1.5, label='车身位移 x₂')
+        # 若 multi-body，绘制簧载位移（车身）和平均轮端位移
+        if 'body_zs' in self.results:
+            # average unsprung z across wheels
+            if 'unsprung_z' in self.results:
+                avg_wheel = np.mean(self.results['unsprung_z'], axis=1)
+            else:
+                avg_wheel = np.zeros_like(t)
+            ax2.plot(t, avg_wheel * 1000, 'b-', linewidth=1.5, label='平均轮端位移')
+            ax2.plot(t, x2 * 1000, 'r-', linewidth=1.5, label='车身位移 x₂')
+        else:
+            ax2.plot(t, x1 * 1000, 'b-', linewidth=1.5, label='轮胎位移 x₁')
+            ax2.plot(t, x2 * 1000, 'r-', linewidth=1.5, label='车身位移 x₂')
         ax2.set_ylabel('位移 (mm)')
         ax2.grid(True, alpha=0.3)
         ax2.legend(loc='upper right')
 
         ax3 = self.time_figure.add_subplot(4, 1, 3)
-        suspension_travel = (x2 - x1) * 1000
-        ax3.plot(t, suspension_travel, 'g-', linewidth=1.5, label='悬架行程 (x₂-x₁)')
+        if 'body_zs' in self.results:
+            # plot max suspension travel (max over wheels)
+            suspension_travel = np.max(np.abs(self.results.get('suspension_travel', np.zeros((len(t),4)))), axis=1) * 1000
+            ax3.plot(t, suspension_travel, 'g-', linewidth=1.5, label='最大悬架行程 (各轮最大)')
+        else:
+            suspension_travel = (x2 - x1) * 1000
+            ax3.plot(t, suspension_travel, 'g-', linewidth=1.5, label='悬架行程 (x₂-x₁)')
         ax3.set_ylabel('行程 (mm)')
         ax3.grid(True, alpha=0.3)
         ax3.legend(loc='upper right')
@@ -602,11 +720,37 @@ class SuspensionAnalysisWindow(QMainWindow):
         """显示性能指标"""
         if self.results is None:
             return
+        params = self.results.get('parameters', {})
+        comfort = self.results.get('comfort_metrics', {})
+        fn = self.results.get('natural_frequencies', [])
+        zeta = self.results.get('damping_ratios', [])
 
-        params = self.results['parameters']
-        comfort = self.results['comfort_metrics']
-        fn = self.results['natural_frequencies']
-        zeta = self.results['damping_ratios']
+        # 安全取值并提供合理的回退（兼容 2-DOF 和 multi-body 结果）
+        m_uw = params.get('m_uw', params.get('m1'))
+        vehicle_mass = params.get('vehicle_mass', None)
+
+        # 非簧载质量（m1）优先使用 explicit m1，否则使用 m_uw
+        m1 = params.get('m1', m_uw if m_uw is not None else 0.0)
+
+        # 簧载质量（m2）：优先使用 explicit m2；若未提供且有 vehicle_mass 与 m_uw，则按四轮平均计算簧载质量
+        if 'm2' in params:
+            m2 = params['m2']
+        else:
+            if vehicle_mass is not None and m_uw is not None:
+                m2 = max((vehicle_mass - 4.0 * m_uw) / 4.0, 0.0)
+            else:
+                m2 = params.get('m_sprung', params.get('Ms', 0.0))
+
+        # 刚度/阻尼取值，优先使用直传参数
+        k1 = params.get('k1', params.get('k_tire', 0.0))
+        k2 = params.get('k2', params.get('k_suspension', params.get('k', 0.0)))
+        c = params.get('c', params.get('damping', params.get('c_suspension', 0.0)))
+
+        # 固有频率与阻尼的安全索引
+        fn0 = fn[0] if len(fn) > 0 else 0.0
+        fn1 = fn[1] if len(fn) > 1 else 0.0
+        zeta0 = zeta[0] if len(zeta) > 0 else 0.0
+        zeta1 = zeta[1] if len(zeta) > 1 else 0.0
 
         report = f"""
 ╔════════════════════════════════════════════════════════════╗
@@ -615,48 +759,49 @@ class SuspensionAnalysisWindow(QMainWindow):
 
 【系统参数】
 ────────────────────────────────────────────────────────────
-  非簧载质量 m₁:      {params['m1']:.1f} kg
-  簧载质量 m₂:        {params['m2']:.1f} kg
-  轮胎刚度 k₁:        {params['k1']:.0f} N/m
-  悬架刚度 k₂:        {params['k2']:.0f} N/m
-  阻尼系数 c:         {params['c']:.0f} N·s/m
+  非簧载质量 m₁:      {m1:.1f} kg
+  簧载质量 m₂:        {m2:.1f} kg
+  轮胎刚度 k₁:        {k1:.0f} N/m
+  悬架刚度 k₂:        {k2:.0f} N/m
+  阻尼系数 c:         {c:.0f} N·s/m
 
 【固有特性】
 ────────────────────────────────────────────────────────────
-  第一阶固有频率:     {fn[0]:.3f} Hz
-  第二阶固有频率:     {fn[1]:.3f} Hz
-  模态阻尼比 ζ₁:      {zeta[0]:.4f}
-  模态阻尼比 ζ₂:      {zeta[1]:.4f}
+  第一阶固有频率:     {fn0:.3f} Hz
+  第二阶固有频率:     {fn1:.3f} Hz
+  模态阻尼比 ζ₁:      {zeta0:.4f}
+  模态阻尼比 ζ₂:      {zeta1:.4f}
 
 【舒适性指标】
 ────────────────────────────────────────────────────────────
-  RMS加速度:          {comfort['rms_acceleration']:.4f} m/s²
-  最大加速度:         {comfort['max_acceleration']:.4f} m/s²
-  舒适性评级:         {comfort['comfort_rating']}
+  RMS加速度:          {comfort.get('rms_acceleration', 0.0):.4f} m/s²
+  最大加速度:         {comfort.get('max_acceleration', 0.0):.4f} m/s²
+  舒适性评级:         {comfort.get('comfort_rating', 'N/A')}
 
 【操纵稳定性指标】
 ────────────────────────────────────────────────────────────
-  最大悬架行程:       {comfort['max_suspension_travel'] * 1000:.2f} mm
-  轮胎动载荷系数:     {comfort['dynamic_load_coefficient']:.3f}
+  最大悬架行程:       {comfort.get('max_suspension_travel', 0.0) * 1000:.2f} mm
+  轮胎动载荷系数:     {comfort.get('dynamic_load_coefficient', 0.0):.3f}
 
 【评价】
 ────────────────────────────────────────────────────────────
 """
 
-        # 添加评价
-        if comfort['rms_acceleration'] < 0.5:
+        # 添加评价（使用 get 以避免 KeyError）
+        rms_acc = comfort.get('rms_acceleration', 0.0)
+        if rms_acc < 0.5:
             report += "  ✓ 舒适性优秀\n"
-        elif comfort['rms_acceleration'] < 1.0:
+        elif rms_acc < 1.0:
             report += "  ✓ 舒适性良好\n"
         else:
             report += "  ✗ 舒适性有待改善\n"
 
-        if comfort['dynamic_load_coefficient'] < 2.0:
+        if comfort.get('dynamic_load_coefficient', 0.0) < 2.0:
             report += "  ✓ 路面附着良好\n"
         else:
             report += "  ✗ 可能存在车轮跳离路面风险\n"
 
-        if comfort['max_suspension_travel'] < 0.08:
+        if comfort.get('max_suspension_travel', 0.0) < 0.08:
             report += "  ✓ 悬架行程充裕\n"
         else:
             report += "  ⚠ 悬架行程较大，注意限位\n"

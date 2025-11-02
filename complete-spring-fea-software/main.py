@@ -20,7 +20,10 @@ class IntegratedMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("汽车减震系统综合分析平台")
-        self.setGeometry(50, 50, 1400, 950)
+        # 初始窗口大小（可调整）
+        self.resize(1400, 950)
+        # 设置最小尺寸以保证布局可用，但允许用户自由调整窗口大小
+        self.setMinimumSize(800, 600)
 
         # 创建中心部件
         central_widget = QWidget()
