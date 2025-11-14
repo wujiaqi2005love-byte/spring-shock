@@ -27,5 +27,3 @@ python complete-spring-fea-software\main.py
 ## 贡献
 欢迎提交 issue 或 pull request。若要贡献代码，请先创建分支并在本地运行测试/示例。
 
-## 许可证
-请在此处添加许可证信息（例如 MIT），如果你想将仓库开源。
